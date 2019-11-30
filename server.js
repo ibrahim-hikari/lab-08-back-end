@@ -4,7 +4,7 @@ require('dotenv').config();
 const express = require('express')
 const cors = require('cors')
 const superagent = require('superagent');
-const  pg = require('pg');
+const pg = require('pg');
 
 const client = new pg.Client(process.env.DATABASE_URL);
 const PORT = process.env.PORT || 3000;
@@ -20,107 +20,83 @@ server.get('/', (request, response) => {
 
 server.get('/location', locationHandler);
 server.get('/weather', weatherHandler);
-server.get('/events', eventHandler);
+server.get('/events', eventsHandler);
+server.get('/movies', moviesHandler);
+server.get('/yelp', yelpHandler);
+server.get('/trails', trailsHandler);
 
 
+const client = require('./modules/client.js');
+const location = require('./modules/location.js');
+const weather = require('./modules/weather.js');
+const events = require('./modules/events.js');
+const movies = require('./modules/movies.js');
+const yelp = require('./modules/yelp.js');
+const trails = require('./modules/trails.js');
 
-// ---- Location section ---- \\
+server.use('*', notFoundHandler);
+server.ues(errorHandler);
 
 function locationHandler(req, res) {
-    getLocation(req.query.data)
-        .then(locationData => res.status(200).json(locationData));
+    const city = req.query.data;
+    location.getLoctionDtata(city)
+        .then(data => sendJson(data, res))
+        .catch((error) => errorHndler(error, req, res));
 }
-
-
-function getLocation(city) {
-
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${city}&key=${process.env.GEOCODE_API_KEY}`
-    console.log('url', url);
-
-    return superagent.get(url)
-        .then(data => {
-            return new Location(city, data.body);
-        })
-
-}
-
-function Location(city, data) {
-    this.search_query = city;
-    this.formatted_query = data.results[0].formatted_address;
-    this.latitude = data.results[0].geometry.location.lat;
-    this.longitude = data.results[0].geometry.location.lng;
-
-}
-
-
-// ---- Weather section ---- \\
 
 function weatherHandler(req, res) {
-    // Query String = ?a=b&c=d
-    getWeather(req.query.data)
-        .then(weatherData => res.status(200).json(weatherData));
-
+    const location = req.query.data;
+    weather(location)
+        .then(summaries => sendJson(summaries, res))
+        .catch((error) => errorHndler(error, req, res));
 }
 
-function getWeather(query) {
-    const url = `https://api.darksky.net/forecast/${process.env.DARKSKY_API_KEY}/${query.latitude},${query.longitude}`;
-    console.log('url', url);
-    return superagent.get(url)
-        .then(data => {
-            let weather = data.body;
-            return weather.daily.data.map((day) => {
-                return new Weather(day);
-            });
-        });
+function eventsHandler(req, res) {
+    const location = req.query.data.formatted_query;
+    events(location)
+        .then(eventslist => sendJson(eventslist, res))
+        .catch((error) => errorHndler(error, req, res));
 }
 
-function Weather(day) {
-    this.forecast = day.summary;
-    this.time = new Date(day.time * 1000).toDateString();
+function yelpHandler(req, res) {
+    const location = req.query.data.search_query;
+    yelp(location)
+        .then(reviews => sendJson(reviews, res))
+        .catch((error) => errorHndler(error, req, res));
 }
 
-// ---- Event section ---- \\
-
-function eventHandler(req, res) {
-    getEvent(req.query.data)
-        .then(eventData => res.status(200).json(eventData));
-
-}
-
-function getEvent(query) {
-    const url = `http://api.eventful.com/json/events/search?app_key=${process.env.EVENT_API_KEY}&location=${query.formatted_query}`;
-    console.log('naseem', url);
-    return superagent.get(url)
-        .then(data => {
-            const eventData = JSON.parse(data.text);
-            return eventData.events.event.map((eventday) => {
-                return new Event(eventday);
-            });
-        });
-}
-
-function Event(day) {
-    this.link = day.url;
-    this.name = day.title;
-    this.event_data = day.start_time;
-    this.summary = day.description;
+function trailsHandler(req, res) {
+    const latitude = req.query.data.latitude;
+    const longitude = req.query.data.longitude;
+    trails(latitude, longitude)
+        .then(trailslist => sendJson(trailslist, res))
+        .catch((error) => errorHndler(error, req, res));
 }
 
 
+function moviesHandler(req, res) {
+    const location = req.query.data.formatted_query;
+    movies(location)
+        .then(trailslist => sendJson(trailslist, res))
+        .catch((error) => errorHndler(error, req, res));
+}
 
+function sendJson(data, res) {
+    res.status(200).json(data);
+}
 
-server.get('/foo', (request, response) => {
-    throw new Error('ops');
-})
+function notFoundHandler(req, res) {
+    res.status(404).send('what?');
+}
 
-server.use('*', (request, response) => {
-    response.status(404).send('Not Found')
-})
+function errorHandler(error, req, res) {
+    res.status(500).send('error');
+}
 
-server.use((error, request, response) => {
-    response.status(500).send(error)
-})
+function startServer() {
+    server.listen(PORT, () => console.log(`server up on ${PORT}`));
+}
 
-
-
-server.listen(PORT, () => console.log(`app listening on ${PORT}`))
+client.connect()
+    .then(startServer)
+    .catch(err => console.error(err));
